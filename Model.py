@@ -18,7 +18,7 @@ class DAE(nn.Module):
             nn.LayerNorm(48)
         )
         self.mlp = nn.Sequential(
-            nn.Linear(256 * 48, 512),
+            nn.Linear(48, 512),
             nn.Mish(),
             nn.LayerNorm(512),
             nn.Linear(512, 256),
@@ -31,14 +31,19 @@ class DAE(nn.Module):
     
     def forward(self, x, mask):
         x = self.feature_embed(x)
-        y = self.mask_embed(y)
-        x = self.seq1(torch.cat([x,y]))
+        y = self.mask_embed(mask)
+        z = torch.cat([x,y], dim = 1)
+        x = self.seq1(z)
         x = self.mlp(x)
         return x
 
 
 dataset, nullArray, mask_drop = dataPrep()
-batch = 256
+dataset = dataset.to(device=device)
+nullArray = nullArray.to(device=device)
+mask_drop = mask_drop.to(device=device)
+mask_drop = mask_drop * nullArray
+batch = 4000
 
 n_epochs = 15
 valid_every = 3
@@ -62,12 +67,27 @@ train_set, valid_set = torch.utils.data.random_split(dataset, [0.9, 0.1])
 train_loader = DataLoader(train_set, batch_size=batch, shuffle=True)
 valid_loader = DataLoader(valid_set, batch_size=batch, shuffle=True)
 
-model = DAE()
+model = DAE().to(device = device)
 
+mseloss = MaskedMSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1)
 model.train()
 
 for epoch in tqdm(range(n_epochs)):
     x = 0
-    for i in enumerate(train_loader):
-        pred = model()
+    for i in tqdm(enumerate(train_loader)):
+        pred = model(i[1],mask_drop[batch*x:batch*(x+1)])
+        optimizer.zero_grad()
+        loss = mseloss(i[1], pred, mask_drop[batch*x:batch*(x+1)])
+        loss.backward()
+        optimizer.step()
+        x += 1
+    if epoch + 1 % valid_every == 0:
+        model.eval()
+        y = 0
+        for j in enumerate(valid_loader):
+            pred = model(j,mask_drop[batch*y:batch*(y+1)])
+            loss = mseloss(j, pred, mask_drop[batch*y:batch*(y+1)])
+            y += 1 
+
+

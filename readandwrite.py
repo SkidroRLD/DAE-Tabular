@@ -31,4 +31,4 @@ def dataPrep():
     mask_drop = createMask(data.shape, 0.03)
     data = torch.from_numpy(data) * mask_drop
 
-    return data, torch.from_numpy(nullArray), mask_drop
+    return data.type(torch.float32), torch.from_numpy(nullArray).type(torch.float32), mask_drop.type(torch.float32)
